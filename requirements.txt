@@ -2,3 +2,4 @@ pytest
 pytest-cov
 python-dotenv
 openai
+pdoc==15.0.0

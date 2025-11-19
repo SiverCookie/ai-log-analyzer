@@ -1,6 +1,8 @@
 # AI Log Analyzer
 
 ![CI](https://github.com/SiverCookie/ai-log-analyzer/actions/workflows/python-tests.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+[![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://<user>.github.io/ai-log-analyzer/)
 
 A lightweight, production-ready Python project that analyzes log files, extracts errors, and generates intelligent suggestions using an AI model.
 If the AI API is unavailable (quota exceeded / no key), the system automatically falls back to a local analysis engine.

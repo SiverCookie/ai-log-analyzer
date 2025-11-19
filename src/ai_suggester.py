@@ -1,26 +1,47 @@
 import os
+from typing import List, Optional
 from openai import OpenAI, RateLimitError, APIError
 from dotenv import load_dotenv
+import logging
 
 load_dotenv()
 
+
 class AISuggester:
     """
-    Uses an AI model to generate suggestions for fixing log errors.
-    Automatically falls back to offline analysis if API fails.
+    Handles AI-based error analysis.
+
+    Attributes
+    ----------
+    model : str
+        The name of the AI model to call.
+    client : OpenAI
+        The underlying OpenAI client instance.
+
+    Methods
+    -------
+    generate_suggestions(errors: list[str]) -> str
+        Sends errors to the AI model and returns a suggestion text.
+
+    generate_suggestions_fallback(errors: list[str]) -> str
+        Generates simple rule-based recommendations when AI is disabled or unavailable.
     """
 
-    def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.model = os.getenv("MODEL", "gpt-4o-mini")
+    def __init__(self) -> None:
+        self.api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        self.model: str = os.getenv("MODEL", "gpt-4o-mini")
 
-        # Create client only if key exists
-        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
+        # Create client only if we have a key
+        self.client: Optional[OpenAI] = (
+            OpenAI(api_key=self.api_key) if self.api_key else None
+        )
 
-    def _fallback_suggestion(self, errors):
+    def _fallback_suggestion(self, errors: List[str]) -> str:
         """
-        Basic heuristic fallback if AI isn't available.
+        Local offline fallback model.
+        Uses simple heuristics to produce meaningful suggestions.
         """
+
         if not errors:
             return "No errors found. System is running normally."
 
@@ -30,41 +51,65 @@ class AISuggester:
         ]
 
         for err in errors:
-            if "database" in err.lower():
+            lower = err.lower()
+
+            if "database" in lower:
                 suggestions.append("- Database connection issue. Check credentials or server availability.")
-            elif "timeout" in err.lower():
-                suggestions.append("- Operation timed out. Increase timeout or check network stability.")
-            elif "critical" in err.lower():
-                suggestions.append("- Critical error detected. Inspect system resources or hardware.")
+
+            elif "timeout" in lower:
+                suggestions.append("- Operation timed out. Check network stability or increase timeout limits.")
+
+            elif "critical" in lower:
+                suggestions.append("- Critical error detected. Inspect CPU, RAM, temperature, or hardware.")
+
             else:
-                suggestions.append(f"- Review module associated with: {err[:50]}...")
+                # generic fallback
+                suggestions.append(f"- Investigate subsystem associated with: '{err[:60]}...'")
 
-        suggestions.append("\nGeneral steps:")
-        suggestions.append("- Check recent config changes.")
-        suggestions.append("- Inspect logs around the error timestamp.")
-        suggestions.append("- Reproduce issue in a controlled environment.")
-
+        suggestions.extend([
+            "",
+            "General steps:",
+            "- Check recent config changes.",
+            "- Inspect logs around the error timestamp.",
+            "- Reproduce the issue in a controlled environment."
+        ])
+        logging.warning("AI unavailable — using fallback mode.")
         return "\n".join(suggestions)
+        
+    def generate_suggestions_fallback(self, errors):
+        return (
+            "AI unavailable — fallback activated.\n\n"
+            + "\n".join(f"- Possible issue: {e}" for e in errors)
+        )
 
-    def generate_suggestions(self, errors):
+    def generate_suggestions(self, errors: List[str]) -> str:
         """
-        Sends error list to AI, or falls back if quota is exceeded or no key exists.
+        Generates suggestions for fixing the provided log errors.
+        Automatically falls back to heuristic mode if AI fails.
+
+        Parameters
+        ----------
+        errors : List[str]
+            The list of extracted log errors.
+
+        Returns
+        -------
+        str
+            A formatted suggestion message.
         """
-        # nothing to analyze
+
         if not errors:
             return "No errors found. System is running normally."
 
-        # no API key → use fallback
-        if not self.api_key:
+        # No API key → fallback mode
+        if not self.client:
             return self._fallback_suggestion(errors)
 
-        # call real AI with full safety
+        # Build prompt
         prompt = (
             "You are an expert software engineer specialized in debugging.\n"
-            "Below is a list of log errors. Provide clear, concise suggestions "
-            "on what may have caused them and what steps could fix the problem.\n\n"
-            "Errors:\n"
-            + "\n".join(errors)
+            "Analyze the following log errors and provide concise, actionable steps.\n\n"
+            "Errors:\n" + "\n".join(errors)
         )
 
         try:
@@ -73,9 +118,10 @@ class AISuggester:
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=300
             )
-
+            logging.info("Sending error list to AI model...")
             return response.choices[0].message["content"]
 
         except (RateLimitError, APIError, Exception):
-            # fallback in case of quota exceeded, invalid model, or any other API error
+            # fallback on any OpenAI failure
+            logging.error("AI request failed — entering fallback mode.")
             return self._fallback_suggestion(errors)
