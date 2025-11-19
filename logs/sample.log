@@ -1,0 +1,5 @@
+[INFO] Application started.
+[DEBUG] Loading configuration...
+[ERROR] Failed to connect to database.
+[WARNING] Deprecated API usage.
+[CRITICAL] System temperature too high.
